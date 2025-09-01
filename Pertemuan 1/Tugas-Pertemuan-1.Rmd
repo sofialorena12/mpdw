@@ -1,0 +1,654 @@
+---
+title: "Tugas 2 Praktikum MPDW"
+author: "Sofia Lorena"
+date: "2025-08-31"
+output: html_document
+---
+
+```{r}
+library(readxl)
+library("forecast")
+library("graphics")
+library("TTR")
+library("TSA")
+```
+
+# Import Data
+
+```{r}
+# Import Data 
+data <- read_excel("C:\\Users\\LENOVO\\Downloads\\coffe_prices_kelompok.xlsx")
+data
+```
+
+```{r}
+data100 <- head(data, 100)
+data100
+```
+
+# Eksplorasi Data
+
+```{r}
+View(data100)
+str(data100)
+dim(data100)
+```
+
+```{r}
+data100.ts <- ts(data100$`Coffee Arabica ($/kg)`)
+data100.ts
+```
+
+```{r}
+summary(data100.ts)
+```
+
+```{r}
+ts.plot(data100.ts, xlab="Date (Monthly) ", ylab="Coffee Arabica ($/kg)", 
+        main = "Time Series Plot")
+points(data100.ts)
+```
+
+# Pemulusan
+
+## Single Moving Average (AMA) dan Double Moving Average (DMA)
+
+```{r}
+n <- nrow(data100)
+n_train <- floor(0.8 * n)
+
+# SMA/DMA
+training_ma <- data100[1:n_train, ]
+testing_ma  <- data100[(n_train+1):n, ]
+train_ma.ts <- ts(training_ma$`Coffee Arabica ($/kg)`)
+test_ma.ts  <- ts(testing_ma$`Coffee Arabica ($/kg)`)
+
+# SES/DES
+training <- data100[1:n_train, ]
+testing  <- data100[(n_train+1):n, ]
+train.ts <- ts(training$`Coffee Arabica ($/kg)`)
+test.ts  <- ts(testing$`Coffee Arabica ($/kg)`)
+
+```
+
+
+```{r}
+# Jumlah observasi
+n <- nrow(data100)
+
+# Batas 80% data latih
+n_train <- floor(0.8 * n)
+
+# Bagi data untuk SMA/DMA
+training_ma <- data100[1:n_train, ]
+testing_ma  <- data100[(n_train+1):n, ]
+
+# Ubah ke time series
+train_ma.ts <- ts(training_ma$`Coffee Arabica ($/kg)`)
+test_ma.ts  <- ts(testing_ma$`Coffee Arabica ($/kg)`)
+
+```
+
+
+### Pembagian Data
+
+Pembagian data latih dan data uji dilakukan dengan perbandingan 80% data latih dan 20% data uji.
+
+```{r}
+# hitung jumlah data
+n <- nrow(data100)
+
+# tentukan batas 80%
+n_train <- floor(0.8 * n)
+
+# bagi data
+training_ma <- data100[1:n_train, ]
+testing_ma  <- data100[(n_train+1):n, ]
+
+# ubah ke time series
+train_ma.ts <- ts(training_ma$`Coffee Arabica ($/kg)`)
+test_ma.ts  <- ts(testing_ma$`Coffee Arabica ($/kg)`)
+
+```
+
+### Eksplorasi Data
+
+Eksplorasi data dilakukan pada keseluruhan data, data latih serta data uji menggunakan plot data deret waktu.
+
+```{r}
+#eksplorasi keseluruhan data
+plot(data100.ts, col="red",main="Plot semua data")
+points(data100.ts)
+
+#eksplorasi data latih
+plot(train_ma.ts, col="blue",main="Plot data latih")
+points(train_ma.ts)
+
+#eksplorasi data uji
+plot(test_ma.ts, col="blue",main="Plot data uji")
+points(test_ma.ts)
+```
+
+```{r}
+library(ggplot2)
+ggplot() + 
+  geom_line(data = training_ma, aes(x = `Date (Monthly)`, y = `Coffee Arabica ($/kg)`, col = "Data Latih")) +
+  geom_line(data = testing_ma, aes(x = `Date (Monthly)`, y = `Coffee Arabica ($/kg)`, col = "Data Uji")) +
+  labs(x = "Date (Monthly)", y = "Coffee Arabica ($/kg)", color = "Legend") +
+   scale_colour_manual(name="Keterangan:", breaks = c("Data Latih", "Data Uji"),
+                      values = c("blue", "red")) + 
+  theme_bw() + theme(legend.position = "bottom",
+                     plot.caption = element_text(hjust=0.5, size=12))
+ 
+```
+
+### Single Moving Average
+
+```{r}
+# Pemulusan SMA dengan m = 4
+data.sma <- SMA(train_ma.ts, n = 4)
+data.sma
+
+# Ramalan 1 periode ke depan
+data.ramal <- c(NA, data.sma)
+
+# Gabungkan ke dalam tabel
+data.gab <- cbind(
+  aktual    = c(train_ma.ts), 
+  pemulusan = c(data.sma, rep(NA, length(test_ma.ts))),
+  ramalan   = c(data.ramal, rep(data.ramal[length(data.ramal)], length(test_ma.ts) - 1))
+)
+
+data.gab  # hasil pemulusan dan ramalan
+
+# Plot data aktual, hasil pemulusan, dan ramalan
+ts.plot(train_ma.ts, xlab = "Time Period", ylab = "Coffee Arabica ($/kg)", 
+        main = "SMA m=4 Data Latih")
+points(train_ma.ts)
+lines(data.gab[,2], col = "green", lwd = 2)  # garis pemulusan
+lines(data.gab[,3], col = "red", lwd = 2)    # garis ramalan
+legend("topleft", c("Data Aktual", "Pemulusan SMA", "Ramalan SMA"), 
+       lty = 1, col = c("black","green","red"), cex = 0.8)
+
+```
+```{r}
+# Samakan panjang data.ramal dengan train_ma.ts
+data.ramal_train <- data.ramal[1:length(train_ma.ts)]
+
+# Hitung error (abaikan NA)
+error_train.sma <- train_ma.ts - data.ramal_train
+valid_index <- !is.na(error_train.sma)  # hanya ambil yang tidak NA
+
+error_valid <- error_train.sma[valid_index]
+aktual_valid <- train_ma.ts[valid_index]
+
+# Hitung ukuran akurasi
+SSE_train.sma <- sum(error_valid^2)
+MSE_train.sma <- mean(error_valid^2)
+MAPE_train.sma <- mean(abs(error_valid / aktual_valid) * 100)
+
+# Simpan hasil ke matriks
+akurasi_train.sma <- matrix(c(SSE_train.sma, MSE_train.sma, MAPE_train.sma))
+row.names(akurasi_train.sma) <- c("SSE", "MSE", "MAPE")
+colnames(akurasi_train.sma) <- c("Akurasi SMA m = 4")
+
+akurasi_train.sma
+
+```
+Dalam hal ini nilai MAPE data latih pada metode pemulusan SMA sekitar 2%, nilai ini dapat dikategorikan sebagai nilai akurasi yang sangat baik. Selanjutnya dilakukan perhitungan nilai MAPE data uji pada metode pemulusan SMA.
+
+```{r}
+# Panjang data latih dan data total
+n_train <- length(train_ma.ts)
+n_total <- length(data100.ts)
+
+# Ambil ramalan SMA untuk data uji secara otomatis
+ramal_test_sma <- data.gab[(n_train + 1):n_total, 3]  # kolom 3 = ramalan SMA
+
+# Hitung error
+error_test.sma <- test_ma.ts - ramal_test_sma
+
+# Hitung akurasi
+SSE_test.sma <- sum(error_test.sma^2)
+MSE_test.sma <- mean(error_test.sma^2)
+MAPE_test.sma <- mean(abs(error_test.sma / test_ma.ts) * 100)
+
+# Simpan ke matriks
+akurasi_test.sma <- matrix(c(SSE_test.sma, MSE_test.sma, MAPE_test.sma))
+row.names(akurasi_test.sma) <- c("SSE", "MSE", "MAPE")
+colnames(akurasi_test.sma) <- c("Akurasi SMA m = 4")
+akurasi_test.sma
+```
+Perhitungan akurasi menggunakan data latih menghasilkan nilai MAPE yang kurang dari 10% sehingga nilai akurasi ini dapat dikategorikan sebagai sangat baik.
+
+### Double Moving Average
+
+```{r}
+library(TTR)
+
+# Pastikan data.sma sudah ada
+# data.sma = SMA(train_ma.ts, n = 4)
+
+# Hitung DMA
+dma <- SMA(data.sma, n = 4)
+At <- 2 * data.sma - dma
+Bt <- 2 / (4 - 1) * (data.sma - dma)  # m = 4
+
+# Ramalan untuk data latih
+data.dma <- At + Bt
+data.ramal2 <- c(NA, data.dma)
+
+# Panjang data uji
+n_test <- length(test_ma.ts)
+
+# Ramalan untuk data uji
+t <- 1:n_test
+f <- c()
+for (i in t) {
+  f[i] <- At[length(At)] + Bt[length(Bt)] * i
+}
+
+# Pastikan data aktual sama dengan data latih
+data2.ts <- train_ma.ts
+
+# Gabungkan semua ke tabel sesuai syntaxmu
+data.gab2 <- cbind(
+  aktual      = c(data2.ts), 
+  pemulusan1  = c(data.sma, rep(NA, n_test)),
+  pemulusan2  = c(dma, rep(NA, n_test)),
+  At          = c(At, rep(NA, n_test)), 
+  Bt          = c(Bt, rep(NA, n_test)),
+  ramalan     = c(data.ramal2, f[-1])  # f[-1] agar nyambung seperti syntaxmu
+)
+
+data.gab2
+```
+
+
+```{r}
+# Samakan panjang antara aktual dan ramalan
+ramal_dma <- data.ramal2[1:length(data100.ts)]
+
+# Hitung error, abaikan NA
+error_train.dma <- data100.ts - ramal_dma
+
+# Hilangkan NA dari error dan data aktual sebelum dihitung
+valid_index <- !is.na(error_train.dma)
+error_train.dma <- error_train.dma[valid_index]
+aktual_valid <- data100.ts[valid_index]
+
+# Hitung ukuran akurasi
+SSE_train.dma <- sum(error_train.dma^2)
+MSE_train.dma <- mean(error_train.dma^2)
+MAPE_train.dma <- mean(abs(error_train.dma / aktual_valid) * 100)
+
+# Simpan dalam matriks
+akurasi_train.dma <- matrix(c(SSE_train.dma, MSE_train.dma, MAPE_train.dma))
+row.names(akurasi_train.dma) <- c("SSE", "MSE", "MAPE")
+colnames(akurasi_train.dma) <- c("Akurasi DMA m = 4")
+
+akurasi_train.dma
+
+```
+
+Perhitungan akurasi pada data latih menggunakan nilai MAPE menghasilkan nilai MAPE yang kurang dari 10% sehingga dikategorikan sangat baik. Selanjutnya, perhitungan nilai akurasi dilakukan pada data uji.
+
+## Single Exponential Smoothing (SES) dan Double Exponential Smoothing (DES)
+
+```{r}
+# Untuk Single/Double Exponential Smoothing
+train.ts <- ts(training$`Coffee Arabica ($/kg)`)
+test.ts  <- ts(testing$`Coffee Arabica ($/kg)`)
+```
+
+
+### Single Exponential Smoothing (SES)
+
+```{r}
+#Cara 1 (fungsi ses)
+ses.1 <- ses(train.ts, h = 10, alpha = 0.2)
+plot(ses.1)
+ses.1
+
+ses.2<- ses(train.ts, h = 10, alpha = 0.7)
+plot(ses.2)
+ses.2
+```
+
+```{r}
+autoplot(ses.1) +
+  autolayer(fitted(ses.1), series="Fitted") +
+  ylab("Membaca") + xlab("Periode")
+```
+
+```{r}
+#Cara 2 (fungsi Holtwinter)
+ses1<- HoltWinters(train.ts, gamma = FALSE, beta = FALSE, alpha = 0.2)
+plot(ses1)
+
+#ramalan
+ramalan1<- forecast(ses1, h=10)
+ramalan1
+
+ses2<- HoltWinters(train.ts, gamma = FALSE, beta = FALSE, alpha = 0.7)
+plot(ses2)
+
+#ramalan
+ramalan2<- forecast(ses2, h=10)
+ramalan2
+```
+
+```{r}
+#SES
+ses.opt <- ses(train.ts, h = 10, alpha = NULL)
+plot(ses.opt)
+ses.opt
+
+#Lamda Optimum Holt Winter
+HWopt<- HoltWinters(train.ts, gamma = FALSE, beta = FALSE,alpha = NULL)
+HWopt
+plot(HWopt)
+
+#ramalan
+ramalanopt<- forecast(HWopt, h=10)
+ramalanopt
+```
+
+#### Akurasi Data Latih
+
+```{r}
+#Keakuratan Metode
+#Pada data training
+
+# SES dengan alpha = 0.2
+SSE1<-ses1$SSE
+MSE1<-ses1$SSE/length(train.ts)
+RMSE1<-sqrt(MSE1)
+
+akurasi1 <- matrix(c(SSE1,MSE1,RMSE1))
+row.names(akurasi1)<- c("SSE", "MSE", "RMSE")
+colnames(akurasi1) <- c("Akurasi lamda=0.2")
+akurasi1
+
+# SES dengan alpha = 0.7
+SSE2<-ses2$SSE
+MSE2<-ses2$SSE/length(train.ts)
+RMSE2<-sqrt(MSE2)
+
+akurasi2 <- matrix(c(SSE2,MSE2,RMSE2))
+row.names(akurasi2)<- c("SSE", "MSE", "RMSE")
+colnames(akurasi2) <- c("Akurasi lamda=0.7")
+akurasi2
+```
+
+```{r}
+#Cara Manual
+# Alpha = 0.2
+fitted1<-ramalan1$fitted
+sisaan1<-ramalan1$residuals
+head(sisaan1)
+
+resid1<-training$'Coffee Arabica ($/kg)'-ramalan1$fitted
+head(resid1)
+
+SSE.1=sum(sisaan1[2:length(train.ts)]^2)
+SSE.1
+
+MSE.1 = SSE.1/length(train.ts)
+MSE.1
+
+MAPE.1 = sum(abs(sisaan1[2:length(train.ts)]/train.ts[2:length(train.ts)])*
+               100)/length(train.ts)
+MAPE.1
+
+akurasi.1 <- matrix(c(SSE.1,MSE.1,MAPE.1))
+row.names(akurasi.1)<- c("SSE", "MSE", "MAPE")
+colnames(akurasi.1) <- c("Akurasi lamda=0.2")
+akurasi.1
+
+# Alpha = 0.7
+fitted2<-ramalan2$fitted
+sisaan2<-ramalan2$residuals
+head(sisaan2)
+
+resid2<-training$'Coffee Arabica ($/kg)'-ramalan2$fitted
+head(resid2)
+
+SSE.2=sum(sisaan2[2:length(train.ts)]^2)
+SSE.2
+
+MSE.2 = SSE.2/length(train.ts)
+MSE.2
+
+MAPE.2 = sum(abs(sisaan2[2:length(train.ts)]/train.ts[2:length(train.ts)])*
+               100)/length(train.ts)
+MAPE.2
+
+akurasi.2 <- matrix(c(SSE.2,MSE.2,MAPE.2))
+row.names(akurasi.2)<- c("SSE", "MSE", "MAPE")
+colnames(akurasi.2) <- c("Akurasi lamda=0.7")
+akurasi.2
+```
+
+Berdasarkan hasil evaluasi model, dapat dilihat bahwa **parameter λ = 0,7 menghasilkan akurasi yang lebih baik dibandingkan λ = 0,2**. Hal ini ditunjukkan oleh nilai SSE, MSE, dan RMSE yang lebih kecil pada λ = 0,7. Dengan demikian, λ = 0,7 lebih optimal digunakan dalam pemodelan karena mampu meminimalkan kesalahan peramalan.
+
+#### Akurasi Data
+
+```{r}
+# jumlah observasi uji
+n_test <- nrow(testing)
+
+# error (ramalan - aktual), samakan panjang dan tipe numeric
+e1   <- as.numeric(ramalan1$mean)[1:n_test] - as.numeric(testing$'Coffee Arabica ($/kg)')
+e2   <- as.numeric(ramalan2$mean)[1:n_test] - as.numeric(testing$'Coffee Arabica ($/kg)')
+eopt <- as.numeric(ramalanopt$mean)[1:n_test] - as.numeric(testing$'Coffee Arabica ($/kg)')
+
+# SSE / MSE / RMSE untuk masing-masing model (abaikan NA)
+SSEtesting1  <- sum(e1^2,  na.rm = TRUE)
+MSEtesting1  <- mean(e1^2, na.rm = TRUE)
+RMSEtesting1 <- sqrt(MSEtesting1)
+
+SSEtesting2  <- sum(e2^2,  na.rm = TRUE)
+MSEtesting2  <- mean(e2^2, na.rm = TRUE)
+RMSEtesting2 <- sqrt(MSEtesting2)
+
+SSEtestingopt  <- sum(eopt^2,  na.rm = TRUE)
+MSEtestingopt  <- mean(eopt^2, na.rm = TRUE)
+RMSEtestingopt <- sqrt(MSEtestingopt)
+
+# Tabel ringkas
+akurasitesting_SSE <- matrix(c(SSEtesting1, SSEtesting2, SSEtestingopt),
+                             nrow = 3,
+                             dimnames = list(c("SSE1","SSE2","SSEopt"), "Nilai"))
+akurasitesting_MSE <- matrix(c(MSEtesting1, MSEtesting2, MSEtestingopt),
+                             nrow = 3,
+                             dimnames = list(c("MSE1","MSE2","MSEopt"), "Nilai"))
+akurasitesting_RMSE <- matrix(c(RMSEtesting1, RMSEtesting2, RMSEtestingopt),
+                              nrow = 3,
+                              dimnames = list(c("RMSE1","RMSE2","RMSEopt"), "Nilai"))
+
+akurasitesting_SSE
+akurasitesting_MSE
+akurasitesting_RMSE
+
+```
+
+### Double Exponential Smoothing
+
+#### Pembagian Data
+
+Pembagian data latih dan data uji dilakukan dengan perbandingan 80% data latih dan 20% data uji.
+
+```{r}
+# jumlah baris data
+n <- nrow(data100)
+
+# hitung batas 80%
+n_train <- floor(0.8 * n)
+
+# bagi data
+training <- data100[1:n_train, ]
+testing  <- data100[(n_train+1):n, ]
+
+# ubah ke time series
+train.ts <- ts(training$`Coffee Arabica ($/kg)`)
+test.ts  <- ts(testing$`Coffee Arabica ($/kg)`)
+```
+
+#### Eksplorasi
+
+Eksplorasi dilakukan dengan membuat plot data deret waktu untuk keseluruhan data, data latih, dan data uji.
+
+```{r}
+#eksplorasi data
+plot(data100.ts, col="black",main="Plot semua data")
+points(data100.ts)
+
+plot(train.ts, col="red",main="Plot data latih")
+points(train.ts)
+
+plot(test.ts, col="blue",main="Plot data uji")
+points(test.ts)
+```
+
+```{r}
+ggplot() + 
+  geom_line(data = training, aes(x = `Date (Monthly)`, y = `Coffee Arabica ($/kg)`, col = "Data Latih")) +
+  geom_line(data = testing, aes(x = `Date (Monthly)`, y = `Coffee Arabica ($/kg)`, col = "Data Uji")) +
+  labs(x = "Date (Monthly)", y = "Coffee Arabica ($/kg)", color = "Legend") +
+  scale_colour_manual(name = "Keterangan:", breaks = c("Data Latih", "Data Uji"),
+                      values = c("blue", "red")) + 
+  theme_bw() + 
+  theme(legend.position = "bottom",
+        plot.caption = element_text(hjust = 0.5, size = 12))
+```
+
+```{r}
+#Lamda=0.2 dan gamma=0.2
+des.1<- HoltWinters(train.ts, gamma = FALSE, beta = 0.2, alpha = 0.2)
+plot(des.1)
+
+#ramalan
+ramalandes1<- forecast(des.1, h=10)
+ramalandes1
+
+#Lamda=0.6 dan gamma=0.3
+des.2<- HoltWinters(train.ts, gamma = FALSE, beta = 0.3, alpha = 0.6)
+plot(des.2)
+
+#ramalan
+ramalandes2<- forecast(des.2, h=10)
+ramalandes2
+```
+
+```{r}
+plot(data100.ts)
+lines(des.1$fitted[,1], lty=2, col="blue")
+lines(ramalandes1$mean, col="red")
+```
+
+```{r}
+#Lamda dan gamma optimum
+des.opt<- HoltWinters(train.ts, gamma = FALSE)
+des.opt
+```
+
+```{r}
+plot(des.opt)
+```
+
+```{r}
+#ramalan
+ramalandesopt<- forecast(des.opt, h=10)
+ramalandesopt
+```
+
+#### Akurasi Data Latih
+
+```{r}
+#Akurasi Data Training
+ssedes.train1<-des.1$SSE
+msedes.train1<-ssedes.train1/length(train.ts)
+sisaandes1<-ramalandes1$residuals
+head(sisaandes1)
+
+mapedes.train1 <- sum(abs(sisaandes1[3:length(train.ts)]/train.ts[3:length(train.ts)])
+                      *100)/length(train.ts)
+
+akurasides.1 <- matrix(c(ssedes.train1,msedes.train1,mapedes.train1))
+row.names(akurasides.1)<- c("SSE", "MSE", "MAPE")
+colnames(akurasides.1) <- c("Akurasi lamda=0.2 dan gamma=0.2")
+akurasides.1
+
+ssedes.train2<-des.2$SSE
+msedes.train2<-ssedes.train2/length(train.ts)
+sisaandes2<-ramalandes2$residuals
+head(sisaandes2)
+
+mapedes.train2 <- sum(abs(sisaandes2[3:length(train.ts)]/train.ts[3:length(train.ts)])
+                      *100)/length(train.ts)
+
+akurasides.2 <- matrix(c(ssedes.train2,msedes.train2,mapedes.train2))
+row.names(akurasides.2)<- c("SSE", "MSE", "MAPE")
+colnames(akurasides.2) <- c("Akurasi lamda=0.6 dan gamma=0.3")
+akurasides.2
+```
+
+Berdasarkan hasil evaluasi model pemulusan eksponensial ganda (DES), diperoleh bahwa skenario pertama dengan parameter α=0,2 dan β=0,2 menghasilkan nilai SSE sebesar 0,1543, MSE sebesar 0,00193, dan MAPE sebesar 2,94%, sedangkan skenario kedua dengan parameter α=0,6 dan β=0,3 memberikan hasil yang lebih baik dengan nilai SSE sebesar 0,0507, MSE sebesar 0,00063, dan MAPE sebesar 1,71%. Kedua skenario termasuk dalam kategori peramalan sangat baik karena MAPE \< 10%, namun skenario kedua dapat dikatakan lebih optimal karena memiliki nilai error yang lebih rendah dibandingkan skenario pertama.
+
+```{r}
+selisihdes1 <- as.numeric(ramalandes1$mean) - testing$`Coffee Arabica ($/kg)`
+selisihdes1
+```
+
+```{r}
+SSEtestingdes1 <- sum(selisihdes1^2)
+MSEtestingdes1 <- SSEtestingdes1 / length(testing$`Coffee Arabica ($/kg)`)
+MAPEtestingdes1 <- mean(abs(selisihdes1 / testing$`Coffee Arabica ($/kg)`)) * 100
+
+selisihdes2 <- as.numeric(ramalandes2$mean) - testing$`Coffee Arabica ($/kg)`
+selisihdes2
+```
+
+```{r}
+SSEtestingdes2 <- sum(selisihdes2^2)
+MSEtestingdes2 <- SSEtestingdes2 / length(testing$`Coffee Arabica ($/kg)`)
+MAPEtestingdes2 <- mean(abs(selisihdes2 / testing$`Coffee Arabica ($/kg)`)) * 100
+
+selisihdesopt <- as.numeric(ramalandesopt$mean) - testing$`Coffee Arabica ($/kg)`
+selisihdesopt
+```
+
+```{r}
+SSEtestingdesopt <- sum(selisihdesopt^2)
+MSEtestingdesopt <- SSEtestingdesopt / length(testing$`Coffee Arabica ($/kg)`)
+MAPEtestingdesopt <- mean(abs(selisihdesopt / testing$`Coffee Arabica ($/kg)`)) * 100
+
+akurasitestingdes <- matrix(
+  c(SSEtestingdes1, MSEtestingdes1, MAPEtestingdes1,
+    SSEtestingdes2, MSEtestingdes2, MAPEtestingdes2,
+    SSEtestingdesopt, MSEtestingdesopt, MAPEtestingdesopt),
+  nrow = 3, ncol = 3,
+  dimnames = list(c("SSE", "MSE", "MAPE"),
+                  c("DES Skenario 1", "DES Skenario 2", "DES Optimum"))
+)
+
+akurasitestingdes
+```
+
+### Perbandingan SES dan DES
+
+```{r}
+MSEfull <-
+  matrix(c(MSEtesting1,MSEtesting2,MSEtestingopt,MSEtestingdes1,MSEtestingdes2,
+           MSEtestingdesopt),nrow=3,ncol=2)
+row.names(MSEfull)<- c("ske 1", "ske 2", "ske opt")
+colnames(MSEfull) <- c("ses","des")
+MSEfull
+```
+
+Berdasarkan nilai **MSE** pada tabel perbandingan, terlihat bahwa untuk **skenario 1, skenario 2, maupun skenario optimum**, metode **Double Exponential Smoothing (DES)** selalu memberikan nilai MSE yang lebih kecil dibandingkan dengan metode **Single Exponential Smoothing (SES)**. Hal ini menunjukkan bahwa **DES lebih baik daripada SES** dalam menghasilkan peramalan pada data harga kopi Arabica, karena mampu meminimalkan kesalahan ramalan. Dengan kata lain, **DES (khususnya pada parameter optimum)** adalah metode yang paling akurat dan lebih direkomendasikan untuk digunakan dibandingkan SES.
+
+# Kesimpulan
+
+Setelah menguji empat metode (SMA, DMA, SES, DES) pada 100 observasi masing-masing anggota dengan split 80/20, didapatkan bahwa metode DES (Double Exponential Smoothing) memberikan kinerja terbaik pada sebagian besar subset — ditunjukkan oleh nilai MAPE dan RMSE terendah pada data uji. SMA dan DMA berfungsi sebagai baseline yang cukup, namun kurang responsif terhadap tren. DES lebih stabil dan akurat bila dibandingkan dengan SES.
