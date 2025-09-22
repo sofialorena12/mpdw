@@ -1,0 +1,499 @@
+---
+title: "Tugas 4 Praktikum MPDW"
+author: "Sofia Lorena"
+date: "2025-09-22"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: united
+    highlight: tango
+    number_sections: false
+  pdf_document: default
+  word_document: default
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+# White Noise
+
+```{r}
+set.seed(1234)
+wn <- rnorm(300)
+ts.plot(wn)
+```
+
+# A. Proses MA(2)
+
+## Pembangkitan Manual
+
+```{r}
+set.seed(1234)
+ma2 <- wn[1:2]
+```
+
+```{r}
+for(i in 3:300){
+  ma2[i] <- wn[i] - 0.4*wn[i-1] - 0.6*wn[i-2]
+}
+```
+
+## Pembangkitan dengan arima.sim
+
+```{r}
+ma2_sim <- arima.sim(model=list(order=c(0,0,2), ma=c(0.4,0.6)), n=300)
+ma2_sim
+```
+
+## Karakteristik Proses MA(2)
+
+### Plot Time Series
+
+```{r}
+ts.plot(ma2, main = "Time Series MA(2)")
+```
+
+Interpretasi: Berdasarkan plot time series, terlihat bahwa data MA(2)
+yang dibangkitkan stasioner dalam rataan.
+
+### Plot ACF
+
+```{r}
+acf(ma2, lag.max=20, main="ACF MA(2)")
+```
+
+Interpretasi: Berdasarkan plot ACF MA (2), menunjukkan pola cut off pada
+lag 2.
+
+### Plot PACF
+
+```{r}
+pacf(ma2, main="PACF MA(2)")
+```
+
+Interpretasi: Berdasarkan plot PACF tersebut, terlihat bahwa plot PACF
+cenderung tails off.
+
+### Plot EACF
+
+```{r}
+TSA::eacf(ma2)
+```
+
+Interpretasi: Berdasarkan pola segitiga nol pada plot EACF, terlihat
+bahwa segitiga nol berada pada ordo AR(0) dan ordo MA(2)
+
+### Kesimpulan Plot Time Series, ACF, PACF, EACF
+
+Berdasarkan ketiga plot (ACF, PACF, dan tabel identifikasi):
+
+1.  Data mengikuti pola **Moving Average orde 2 (MA(2))**.
+
+2.  Ciri khasnya adalah **ACF cut-off di lag ke-2** dan **PACF tailing
+    off**.
+
+3.  Model terbaik yang direkomendasikan adalah **MA(2)**.
+
+## Scatterplot Antar Lag
+
+### Korelasi antara $Y_t$ dengan $Y_{t-1}$
+
+```{r}
+#Yt
+yt_ma2 <- ma2[-1]
+yt_ma2
+#Yt-1
+yt_1_ma2 <- ma2[-300]
+yt_1_ma2
+
+plot(y=yt_ma2,x=yt_1_ma2, main="Scatterplot Yt vs Yt-1", xlab="Yt-1", ylab="Yt")
+```
+
+Berdasarkan scatterplot tersebut, terlihat bahwa terdapat hubungan
+positif antara $Y_t$ dengan $Y_{t-1}$. Hal ini sesuai dengan teori yang
+ada
+
+```{r}
+cor(yt_ma2,yt_1_ma2)
+```
+
+Korelasi antara $Y_t$ dengan $Y_{t-1}$ dari hasil simulasi mendekati
+perhitungan teoritis yaitu $$
+\rho_1=\frac{\theta_1 +\theta_1\theta_2}{1+\theta_1^2+\theta_2^2}=\frac{0.4+(0.4)(0.6)}{1+(0.4)^2+(0.6)^2}=\frac{0.64}{1.52}=0.42
+$$
+
+### Korelasi antara $Y_t$ dengan $Y_{t-2}$
+
+```{r}
+#Yt
+yt_ma2 <- ma2[-c(1,2)]
+yt_ma2
+#Yt-2
+yt_2_ma2 <- ma2[-c(299,300)]
+yt_2_ma2
+```
+
+```{r}
+plot(y=yt_ma2,x=yt_2_ma2, main="Scatterplot Yt vs Yt-2", xlab="Yt-2", ylab="Yt")
+```
+
+Berdasarkan scatterplot tersebut, terlihat bahwa terdapat hubungan
+positif antara $Y_t$ dengan $Y_{t-2}$ namun tidak sekuat hubungan antara
+$Y_t$ dengan $Y_{t-1}$. Hal ini sesuai dengan teori MA(2)
+
+```{r}
+cor(yt_ma2,yt_2_ma2)
+```
+
+Korelasi antara $Y_t$ dengan $Y_{t-2}$ dari hasil simulasi mendekati
+perhitungan teoritis yaitu
+
+$$
+\rho_1=\frac{\theta_2^2}{1+\theta_1^2+\theta_2^2}=\frac{(0.6)}{1+(0.4)^2+(0.6)^2}=\frac{0.6}{1.52}=0.3947
+$$
+
+### Korelasi antara $Y_t$ dengan $Y_{t-3}$
+
+```{r}
+#Yt
+yt_ma2 <- ma2[-c(1,2,3)]
+yt_ma2
+#Yt-2
+yt_3_ma2 <- ma2[-c(298,299,300)]
+yt_3_ma2
+
+plot(y=yt_ma2,x=yt_3_ma2, main="Scatterplot Yt vs Yt-3", xlab="Yt-3", ylab="Yt")
+```
+
+Berdasarkan scatterplot tersebut, terlihat bahwa cenderung tidak
+terdapat hubungan antara $Y_t$ dengan $Y_{t-3}$.
+
+```{r}
+cor(yt_ma2,yt_3_ma2)
+```
+
+Korelasi antara $Y_t$ dengan $Y_{t-3}$ hasil simulasi mendekati teori
+yang ada yaitu 0.
+
+# B. Proses AR (2)
+
+## Pembangkitan Manual
+
+```{r}
+set.seed(1234)
+wn <- rnorm(300)
+ar2 <- rep(0, 300)
+ar2[1] <- wn[1]   
+ar2[2] <- 0.5*ar2[1] + wn[2]
+```
+
+```{r}
+for(i in 3:300){
+  ar2[i] <- 0.5*ar2[i-1] + 0.2*ar2[i-2] + wn[i]
+} 
+```
+
+## Pembangkitan dengan arima.sim
+
+```{r}
+set.seed(1234)
+ar2_ <- arima.sim(list(order=c(2,0,0), ar=c(0.5, 0.2)), n=300)
+```
+
+## Karakteristik Proses AR (2)
+
+### Plot Time Series
+
+```{r}
+ts.plot(ar2, main="Time Series AR(2)")
+```
+
+Interpretasi: Berdasarkan plot time series tersebut terlihat bahwa data
+cenderung stasioner pada rataan
+
+### Plot ACF
+
+```{r}
+par(mfrow=c(1,3))
+```
+
+```{r}
+acf(ar2, lag.max=20, main="ACF AR(2)")
+```
+
+Interpretasi: Berdasarkan plot ACF tersebut terlihat bahwa plot ACF
+cenderung tails off.
+
+### Plot PACF
+
+```{r}
+pacf(ar2, lag.max=20, main="PACF AR(2)")
+```
+
+Interpretasi: Berdasarkan plot PACF tersebut, terlihat bahwa plot PACF
+cut-off pada lag kedua, sejalan dengan teori yang ada.
+
+### Plot EACF
+
+```{r}
+TSA::eacf(ar2)
+```
+
+Interpretasi: Berdasarkan pola segitiga nol pada plot EACF, terlihat
+bahwa segitiga nol berada pada ordo AR(1) dan ordo MA(1)
+
+### Kesimpulan Plot Time Series, ACF, PACF, EACF
+
+1.  Data time series yang ditampilkan bersifat **stasioner**.
+
+2.  Pola ACF dan PACF menunjukkan bahwa model terbaik adalah **AR(2)**
+    (Autoregressive orde 2).
+
+3.  Model AR(2) berarti nilai saat ini dipengaruhi oleh **2 nilai
+    sebelumnya (lag 1 dan lag 2)**, dengan penurunan pengaruh secara
+    bertahap.
+
+## Scatterplot Antar Lag
+
+### Korelasi antara $Y_t$ dengan $Y_{t-1}$
+
+```{r}
+yt_ar   <- ar2[-1]
+yt_1_ar <- ar2[-300]
+
+plot(y=yt_ar, x=yt_1_ar, main="Scatterplot Yt vs Yt-1", xlab="Yt-1", ylab="Yt")
+cor(yt_ar, yt_1_ar)
+```
+
+```{r}
+plot(y=yt_ar,x=yt_1_ar)
+```
+
+Berdasarkan scatterplot tersebut, terlihat bahwa terdapat hubungan
+positif antara $Y_t$ dengan $Y_{t-1}$. Hal ini sesuai dengan teori yang
+ada
+
+```{r}
+cor(yt_ar,yt_1_ar)
+```
+
+Korelasi antara $Y_t$ dengan $Y_{t-1}$ dari hasil simulasi mendekati
+perhitungan teoritis yaitu
+$\rho_1=\frac{\phi_1}{1-\phi_2}=\frac{0.5}{1-0.2}=0.625$
+
+### Korelasi antara $Y_t$ dengan $Y_{t-2}$
+
+```{r}
+yt_ar2 <- ar2[-c(1,2)]
+yt_2_ar <- ar2[-c(299,300)]
+```
+
+```{r}
+plot(y=yt_ar2,x=yt_2_ar)
+```
+
+Berdasarkan scatterplot tersebut, terlihat bahwa terdapat hubungan
+positif antara $Y_t$ dengan $Y_{t-2}$. Hal ini sesuai dengan teori yang
+ada
+
+```{r}
+cor(yt_ar2,yt_2_ar)
+```
+
+Korelasi antara $Y_t$ dengan $Y_{t-2}$ dari hasil simulasi mendekati
+perhitungan teoritis yaitu
+$\rho_2={\phi_1}{\rho_1}+{\phi_2}{\rho_0}={0.5}(0.625)+0.2(1)=0.5125$
+
+### Korelasi antara $Y_t$ dengan $Y_{t-3}$
+
+```{r}
+yt_ar2 <- ar2[-c(1,2,3)]
+yt_3_ar <- ar2[-c(298,299,300)]
+```
+
+```{r}
+plot(y=yt_ar2,x=yt_3_ar)
+```
+
+Berdasarkan scatterplot tersebut, terlihat bahwa terdapat hubungan
+positif antara $Y_t$ dengan $Y_{t-3}$. Hal ini sesuai dengan teori yang
+ada
+
+```{r}
+cor(yt_ar2,yt_3_ar)
+```
+
+Korelasi antara $Y_t$ dengan $Y_{t-3}$ dari hasil simulasi mendekati
+perhitungan teoritis yaitu
+$\rho_3={\phi_1}{\rho_2}+{\phi_2}{\rho_1}={0.5}(0.5125)+0.2(0.625)=0.38125$
+
+# C. Proses ARMA (2,2)
+
+## Pembangkitan Manual
+
+```{r}
+set.seed(1234)
+
+# fungsi dari asprak
+arma.sim <- function(n, macoef, arcoef){
+  manum <- length(macoef)
+  arnum <- length(arcoef)
+  stopifnot(manum < n & arnum < n)
+
+  wn <- rnorm(n, sd = 0.5)
+  init <- max(manum, arnum)
+
+  arma <- wn[1:init]
+  for(i in (init+1):n){
+    mastart <- i - manum
+    maend <- i-1
+    arstart <- i - arnum
+    arend <- i-1
+    arma[i] <- sum(arcoef * arma[arstart:arend]) +
+               sum(macoef * wn[mastart:maend]) +
+               wn[i]
+  }
+  return(arma)
+}
+
+arma22 <- arma.sim(300, macoef = c(0.4, 0.6), arcoef = c(0.5, 0.2))
+arma22
+```
+
+## Pembangkitan dengan arima.sim
+
+```{r}
+set.seed(1090)
+
+arma22_ <- arima.sim(
+  list(order = c(2,0,2), 
+       ar = c(0.5, 0.2), 
+       ma = c(0.4, 0.6)), 
+  n = 300
+)
+
+arma22_
+```
+
+### Karakteristik Proses ARMA(2,2)
+
+### Plot Time Series
+
+```{r}
+ts.plot(arma22, main="Time Series ARMA(2,2)")
+```
+
+Interpretasi: Berdasarkan plot time series tersebut, terlihat bahwa
+model ARMA(2,2) cenderung stasioner dalam rataan
+
+### Plot ACF
+
+```{r}
+acf(arma22, lag.max = 20, main = "ACF ARMA(2,2)")
+```
+
+Interpretasi: Berdasarkan plot ACF tersebut, terlihat bahwa model
+ARMA(2,2) hasil simulasi memiliki plot ACF yang tails off, sesuai dengan
+teori yang ada.
+
+### Plot PACF
+
+```{r}
+pacf(arma22, lag.max = 20, main = "PACF ARMA(2,2)")
+```
+
+Berdasarkan plot PACF tersebut, terlihat bahwa model ARMA(2,2) hasil
+simulasi memiliki plot PACF yang *tails off*, sesuai dengan teori.
+
+### Plot EACF
+
+```{r}
+TSA::eacf(arma22)
+```
+
+Intprestasi: Berdasarkan pola segitiga nol pada plot EACF, terlihat
+bahwa segitiga nol berada pada ordo AR(1) dan ordo MA(2).
+
+### Kesimpulan Plot Time Series, ACF, PACF, EACF
+
+-   Data sudah **stasioner**, baik dalam mean maupun varians.
+
+-   Berdasarkan pola ACF, PACF, dan tabel pemilihan model, **ARMA(2,2)**
+    adalah model yang sesuai.
+
+-   Model ini berarti nilai saat ini dipengaruhi oleh **2 nilai
+    sebelumnya (AR(2))** dan juga oleh **2 error sebelumnya (MA(2))**.
+
+-   Dibandingkan dengan AR(2) saja, model ARMA(2,2) lebih fleksibel
+    karena dapat menangkap **pola korelasi jangka pendek dan error
+    shock** dengan lebih baik.
+
+### Scatterplot antar Lag
+
+#### Korelasi antara $Y_t$ dengan $Y_{t-1}$
+
+```{r}
+plot(arma22[-1], arma22[-300], main="Yt vs Yt-1")
+cor(arma22[-1], arma22[-300])
+```
+
+#### Korelasi antara $Y_t$ dengan $Y_{t-2}$
+
+```{r}
+plot(arma22[-c(1,2)], arma22[-c(299,300)], main="Yt vs Yt-2")
+cor(arma22[-c(1,2)], arma22[-c(299,300)])
+```
+
+#### Korelasi antara $Y_t$ dengan $Y_{t-3}$
+
+```{r}
+plot(arma22[-c(1,2,3)], arma22[-c(298,299,300)], main="Yt vs Yt-3")
+cor(arma22[-c(1,2,3)], arma22[-c(298,299,300)])
+```
+
+```{r}
+phi1   <- 0.5
+phi2   <- 0.2
+theta1 <- 0.4
+theta2 <- 0.6
+sigma2 <- 1
+M      <- 200 
+
+psi <- numeric(M + 1)
+psi[1] <- 1                                # psi_0
+psi[2] <- theta1 + phi1                    # psi_1
+psi[3] <- theta2 + phi1 * psi[2] + phi2    # psi_2
+
+if (M >= 3) {
+  for (j in 4:(M + 1)) {            
+    idx <- j - 1
+    psi[j] <- phi1 * psi[idx] + phi2 * psi[idx - 1]
+  }
+}
+
+K <- 5
+gamma <- numeric(K + 1)
+
+for (k in 0:K) {
+  gamma[k + 1] <- sigma2 * sum(psi[1:(M - k + 1)] * psi[(k + 1):(M + 1)])
+}
+
+rho <- gamma / gamma[1]  # rho_k = gamma_k / gamma_0
+
+result <- data.frame(
+  k   = 1:3,
+  rho = rho[2:4]
+)
+print(result)
+
+```
+
+**Interpretasi Hasil:**
+
+1.  Korelasi antara $Y_t$ dengan $Y_{t-1}$ dari hasil simulasi mendekati
+    perhitungan teoritis yaitu 0.86
+2.  Korelasi antara $Y_t$ dengan $Y_{t-2}$ dari hasil simulasi mendekati
+    perhitungan teoritis yaitu 0.75
+3.  Korelasi antara $Y_t$ dengan $Y_{t-3}$ dari hasil simulasi mendekati
+    perhitungan teoritis yaitu 0.55
