@@ -1,0 +1,154 @@
+---
+title: "Tugas Praktikum 5 MPDW"
+author: "Sofia Lorena"
+date: "2025-10-02"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: united
+    highlight: tango
+    number_sections: false
+  pdf_document: default
+  word_document: default
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+# Import & Subset Data
+
+Data yang digunakan adalah 100 observasi pertama harga kopi Arabika bulanan mulai dari Januari 1960. Kolom index dihapus karena tidak relevan dengan analisis.
+
+```{r}
+library(rio)
+data_coffee <- import("https://raw.githubusercontent.com/diazaria/mpdw/refs/heads/main/Pertemuan%201/Data%20Kelompok%205_Harga%20Kopi.xlsx")
+
+library(dplyr)
+# Buang kolom pertama pakai base R
+data_coffee <- data_coffee[ , -1]
+
+
+# subset baris 1 - 00
+data_coffee_sub <- data_coffee[1:100, ]
+
+# mengambil kolom ke-2 (harga kopi)
+y_sub <- data_coffee_sub[[2]]   
+
+# mengambil tahun dan bulan dari baris pertama subset data
+start_year  <- as.numeric(format(data_coffee_sub$`Date (Monthly)`[1], "%Y"))
+start_month <- as.numeric(format(data_coffee_sub$`Date (Monthly)`[1], "%m"))
+
+# mengubah data agar terbaca sebagai data deret waktu
+data_coffee_sub.ts <- ts(y_sub,
+                         start = c(start_year, start_month),
+                         frequency = 12)
+```
+# Plot Data Time Series
+```{r}
+library(ggplot2)
+library(tsibble)
+plot_coffee <- data_coffee_sub.ts |> 
+  as_tsibble() |> 
+  ggplot(aes(x = index, y = value)) +
+  geom_line() +
+  theme_bw() +
+  xlab("Time Period") +
+  ylab("Coffee Arabica ($/kg)") +
+  ggtitle("Time Series Plot of Coffee Arabica")
+
+# Tampilkan plot
+plot_coffee
+
+# Hitung rata-rata
+mean(data_coffee_sub.ts)
+```
+
+```{r}
+lattice::densityplot(as.vector(data_coffee_sub.ts))
+```
+
+Interpretasi:
+
+Data belum stasioner dalam rataan, karena terlihat adanya tren menurun, lalu lonjakan besar, lalu penurunan lagi. Ragam (variabilitas) juga tampak tidak stabil, karena di periode 1964–1966 fluktuasi jauh lebih besar dibanding periode awal (1960–1963). Artinya, hasil grafik sudah mendukung dugaan bahwa data butuh transformasi/differencing untuk mencapai stasioneritas.
+
+# Plot ACF
+```{r}
+acf(data_coffee_sub.ts)
+```
+
+Grafik ACF menunjukkan autokorelasi tinggi di lag awal yang menurun perlahan dan masih signifikan pada banyak lag. Pola ini menandakan adanya tren dan bahwa data belum stasioner. Oleh karena itu, perlu dilakukan transformasi seperti differencing agar data lebih sesuai untuk analisis lanjutan.
+
+# ADF Test
+
+```{r}
+library(tseries)
+
+# Uji ADF untuk data coffee
+adf_result <- adf.test(data_coffee_sub.ts)
+
+# Lihat hasil
+adf_result
+```
+
+Interpretasi:
+
+Hasil Augmented Dickey-Fuller test pada data 100 observasi pertama menghasilkan nilai statistik uji sebesar -1.7537 dengan p-value 0.6787. Karena p-value lebih besar dari 0.05, maka H0 gagal ditolak. Hal ini menunjukkan bahwa data harga kopi Arabika belum stasioner dalam rataan.
+
+# Ljung-Box Test
+
+```{r}
+box_test <- Box.test(data_coffee_sub.ts, lag = 12, type = "Ljung-Box")
+box_test
+```
+
+Interpretasi:
+
+Hasil uji Ljung-Box pada lag 12 menghasilkan nilai X-squared = 511.07 dengan p-value \< 0.05. Dengan demikian H0 ditolak, yang berarti terdapat autokorelasi signifikan pada data. Hal ini menunjukkan bahwa ragam data tidak stasioner.
+
+# Penanganan Data Tidak Stasioner
+
+## (a) Differencing (untuk rata-rata)
+
+```{r}
+# Differencing untuk rata-rata
+ts_diff <- diff(data_coffee_sub.ts)
+
+# Plot hasil differencing
+plot(ts_diff, main = "Data Setelah Differencing",
+     ylab = "Differenced Harga", xlab = "Waktu")
+
+# Uji ADF setelah differencing
+adf.test(ts_diff)
+```
+
+Interpretasi:
+
+1.  Sebelum differencing. Dari uji sebelumnya (Box-Ljung dan ADF awal), datanya tidak stasioner (ada tren / pola korelasi yang kuat).
+2.  Setelah differencing. Secara visual, grafik sudah lebih berfluktuasi di sekitar mean = 0. Varians terlihat relatif stabil, meskipun ada lonjakan di sekitar 1964.
+3.  Uji ADF. Nilai p-value = 0.02342 \< 0.05, sehingga H0 (data memiliki unit root = tidak stasioner) ditolak. Artinya, setelah differencing, data sudah stasioner dalam rata-rata.
+
+## (b) Log Transform (untuk ragam)
+
+```{r}
+ts_log <- log(data_coffee_sub.ts)
+plot(ts_log, main = "Log Transform Harga Kopi", 
+     ylab = "log(Harga)", xlab = "Waktu")
+
+# Differencing log
+ts_log_diff <- diff(ts_log)
+plot(ts_log_diff, main = "Log-Differenced Data", 
+     ylab = "diff log(Harga)", xlab = "Waktu")
+
+# Uji stasioneritas
+adf.test(ts_log_diff)
+
+# Uji white noise
+Box.test(ts_log_diff, lag = 12, type = "Ljung-Box")
+
+
+```
+
+Interpretasi:
+
+Setelah dilakukan transformasi log dan differencing orde-1, uji Augmented Dickey-Fuller pada data menghasilkan statistik = -3.8321 (p = 0.02022), sehingga H0 unit root ditolak pada α = 5% dan data dinyatakan stasioner dalam rataan. Uji Ljung-Box pada data yang sama menghasilkan X-squared = 13.206 dengan p = 0.3543, sehingga tidak ada bukti autokorelasi signifikan pada lag yang diuji dan ragam dianggap stabil. Dengan demikian, transformasi log + differencing berhasil membuat seri memenuhi asumsi stasioneritas, dan seri siap untuk tahap pemodelan (mis. pemilihan model ARIMA).
